@@ -1,0 +1,68 @@
+# Memberlist
+
+A basic http key/value example of how to use [hashicorp/memberlist](https://github.com/hashicorp/memberlist)
+
+## Install
+
+```shell
+go get github.com/bilalislam/memberlist
+```
+
+## Usage
+
+```shell
+memberlist
+-members="": comma seperated list of members
+-port=4001: http port
+```
+
+### Create Cluster
+
+Start first node
+```shell
+memberlist
+```
+
+Make a note of the local member address
+```
+Local member 192.168.1.64:60496
+Listening on :4001
+```
+
+Start second node with first node as part of the member list
+```shell
+memberlist --members=192.168.1.64:60496 --port=4002
+```
+
+You should see the output
+```
+2015/10/17 22:13:49 [DEBUG] memberlist: Initiating push/pull sync with: 192.168.1.64:60496
+Local member 192.168.1.64:60499
+Listening on :4002
+```
+
+First node output will log the new connection
+```shell
+2015/10/17 22:13:49 [DEBUG] memberlist: TCP connection from: 192.168.1.64:60500
+2015/10/17 22:13:52 [DEBUG] memberlist: Initiating push/pull sync with: 192.168.1.64:60499
+```
+
+## Key/Value Api
+
+HTTP API
+- /add - add value
+- /get - get value
+- /del - delete value
+
+Query params expected are `key` and `val`
+
+```shell
+# add
+curl "http://localhost:4001/add?key=foo&val=bar"
+
+# get
+curl "http://localhost:4001/get?key=foo"
+
+# delete
+curl "http://localhost:4001/del?key=foo"
+```
