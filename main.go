@@ -5,24 +5,21 @@ import (
 	"flag"
 	"fmt"
 	"github.com/go-redis/redis"
-	"github.com/siddontang/go/sync2"
-	"os"
-	"os/signal"
-	"strings"
-	"sync"
-	"syscall"
-	"time"
-
 	"github.com/hashicorp/memberlist"
 	"github.com/pborman/uuid"
+	"github.com/siddontang/go/sync2"
+	"net"
+	"os"
+	"strings"
+	"sync"
 )
 
 var (
 	mtx           sync.RWMutex
 	members       = flag.String("members", "", "comma seperated list of members")
 	port          = flag.Int("port", 4001, "http port")
-	master        = flag.String("redis-master", "", "redis master")
-	slaves        = flag.String("redis-slaves", "", "comma seperated list of redis slaves")
+	master        = flag.String("redis-master", "127.0.0.1:6379", "redis master")
+	slaves        = flag.String("redis-slaves", "127.0.0.1:6380", "comma seperated list of redis slaves")
 	redisDB       = flag.Int("redis-db", 0, "redis db number [0-15]")
 	redisPassword = flag.String("redis-pass", "", "redis password")
 	items         = map[string]string{}
@@ -168,6 +165,7 @@ func start() (*Group, memberlist.Memberlist, error) {
 	c := memberlist.DefaultLocalConfig()
 	c.Events = &eventDelegate{}
 	c.Delegate = &delegate{}
+	c.AdvertisePort = c.BindPort
 	c.BindPort = 0
 	c.Name = hostname + "-" + uuid.NewUUID().String()
 	m, err := memberlist.Create(c)
@@ -192,11 +190,14 @@ func start() (*Group, memberlist.Memberlist, error) {
 			conn:   getRedisClient(*master, *redisDB),
 		}
 		g.Slaves = make(map[string]*Node)
-		for slave, _ := range strings.Split(*slaves, ",") {
-			g.Slaves[string(slave)] = &Node{
-				Addr:   string(slave),
-				Offset: 0,
-				conn:   getRedisClient(string(slave), *redisDB),
+		seps := strings.Split(*slaves, ",")
+		if len(seps) > 0 && len(seps[0]) > 0 {
+			for i, _ := range seps {
+				g.Slaves[seps[i]] = &Node{
+					Addr:   seps[i],
+					Offset: 0,
+					conn:   getRedisClient(seps[i], *redisDB),
+				}
 			}
 		}
 	}
@@ -231,7 +232,7 @@ func (n *Node) close() {
 }
 
 func main() {
-	g, m, err := start()
+	g, _, err := start()
 	if err != nil {
 		fmt.Println(err)
 	}
@@ -241,22 +242,21 @@ func main() {
 		panic(cmd)
 	}
 
-	// Create a channel to listen for exit signals
-	stop := make(chan os.Signal, 1)
-
-	// Register the signals we want to be notified, these 3 indicate exit
-	// signals, similar to CTRL+C
-	signal.Notify(stop,
-		syscall.SIGINT,
-		syscall.SIGTERM,
-		syscall.SIGHUP)
-
-	<-stop
-
-	// Leave the cluster with a 5 second timeout. If leaving takes more than 5
-	// seconds we return.
-	if err := m.Leave(time.Second * 5); err != nil {
-		panic(err)
+	fmt.Println()
+	for s, _ := range g.Slaves {
+		fmt.Printf("redis slave addr: %s", g.Slaves[s].Addr)
+		if cmd := g.Slaves[s].conn.Ping(); cmd == nil {
+			panic(cmd)
+		}
 	}
 
+	for {
+		//listen redis master and if fail then notify promote one of the slaves
+		//lock slaves arr and promote after release lock
+		_, err := net.Dial("tcp", g.Master.Addr)
+		if err != nil {
+			fmt.Println()
+			fmt.Printf("failed to connection : %s", err)
+		}
+	}
 }
