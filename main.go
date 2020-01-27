@@ -112,6 +112,7 @@ func (d *delegate) GetBroadcasts(overhead, limit int) [][]byte {
 	return broadcasts.GetBroadcasts(overhead, limit)
 }
 
+//local object
 func (d *delegate) LocalState(join bool) []byte {
 	mtx.RLock()
 	m := items
@@ -120,6 +121,7 @@ func (d *delegate) LocalState(join bool) []byte {
 	return b
 }
 
+//for remote object control
 func (d *delegate) MergeRemoteState(buf []byte, join bool) {
 	if len(buf) == 0 {
 		return
